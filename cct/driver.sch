@@ -28,6 +28,7 @@ LIBS:opto
 LIBS:atmel
 LIBS:contrib
 LIBS:valves
+LIBS:driver-cache
 EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
@@ -111,17 +112,6 @@ F 2 "TO_SOT_Packages_THT:TO-92_Molded_Narrow" H 4050 2475 50  0001 L CIN
 F 3 "" H 3850 2550 50  0001 L CNN
 	1    3850 2550
 	0    1    -1   0   
-$EndComp
-$Comp
-L BC557 Q3
-U 1 1 5D8A282A
-P 4900 2950
-F 0 "Q3" H 5100 3025 50  0000 L CNN
-F 1 "BC557" H 5100 2950 50  0000 L CNN
-F 2 "TO_SOT_Packages_THT:TO-92_Molded_Narrow" H 5100 2875 50  0001 L CIN
-F 3 "" H 4900 2950 50  0001 L CNN
-	1    4900 2950
-	1    0    0    -1  
 $EndComp
 $Comp
 L CONN_01X01 J?
@@ -435,4 +425,15 @@ Wire Wire Line
 Wire Wire Line
 	5450 2700 5600 2700
 Connection ~ 5600 2700
+$Comp
+L BC547 Q3
+U 1 1 5DBC32E1
+P 4900 2950
+F 0 "Q3" H 5100 3025 50  0000 L CNN
+F 1 "BC547" H 4650 3100 50  0000 L CNN
+F 2 "TO_SOT_Packages_THT:TO-92_Molded_Narrow" H 5100 2875 50  0001 L CIN
+F 3 "" H 4900 2950 50  0001 L CNN
+	1    4900 2950
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC

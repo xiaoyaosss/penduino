@@ -12,7 +12,7 @@ This project should be installed in your arduino sketch area. It has been export
 
 ### Step 2: Assemble the circuit
 
-Assemble the circuit as follows:
+Assemble the circuit as follows (please check circuit before energising - this was drawn from memory):
 
 ![alt text][cct]
 
