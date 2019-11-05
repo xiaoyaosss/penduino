@@ -17,14 +17,21 @@ StaticJsonDocument<COMMAND_SIZE> doc;
 char command[COMMAND_SIZE];
 
 enum PinAssignments {
+clearButton = 8,
 encoderPinA = 2,
 encoderPinB = 3,
-drivePin = 6,
-loadPin = 4,
-clearButton = 8
+driveLed = 12,
+drivePin = 5,
+loadLed = 11,
+loadPin = 4
 };
 
 volatile int encoderPos = 0;
+volatile int encoderPosLast = 0;
+volatile bool goingPosDir = false;
+volatile bool onPosSide = false;
+volatile int driveThresh = 30;
+
 int lastReportedPos = 1;
 
 boolean A_set = false;
@@ -88,9 +95,15 @@ StateType SmState = STATE_START_CALIBRATION;
 
 void Sm_State_Start_Calibration(void)
 {
-  digitalWrite(loadPin, HIGH);  //LOW for No Load
-  digitalWrite(drivePin, HIGH); //HIGH for No Drive
-  SmState = STATE_AWAITING_STOP;
+  //drive OFF
+  digitalWrite(drivePin, HIGH); // PNP - HIGH for OFF
+  digitalWrite(driveLed, LOW);  // opposite sense to drivePin
+  
+  // load ON
+  digitalWrite(loadPin, HIGH);  // NPN - HIGH for ON
+  digitalWrite(loadLed, HIGH);  // same sense as loadPin
+  
+  SmState = STATE_AWAITING_STOP; 
   
 }
 
@@ -105,7 +118,10 @@ void timeUp(void){
 
 void Sm_State_Awaiting_Stop(void)
 {
-  digitalWrite(loadPin,HIGH); //turn on the load
+  //turn on the load
+  digitalWrite(loadLed,HIGH); 
+  digitalWrite(loadPin,HIGH); 
+    
   int initial_position = encoderPos;
   bool swinging = true;
   int lastPos = 0;
@@ -136,9 +152,10 @@ void Sm_State_Awaiting_Stop(void)
     }
   }
 
+  //load OFF
   digitalWrite(loadPin, LOW); 
+  digitalWrite(loadLed, LOW); 
   SmState = STATE_ZERO_ENCODER;
-  
 
 }
 
@@ -181,29 +198,44 @@ void report_encoder(void)
   
 }
 
-void Sm_State_Driving(void)
-{
-  digitalWrite(drivePin, LOW);
+void Sm_State_Driving(void){
+
+  // let the encoder interrupts drive the drive pin
+  
+  //drive ON
+  //digitalWrite(driveLed, HIGH);
+  //digitalWrite(drivePin, LOW);
+  
+  //load OFF
+  digitalWrite(loadLed, LOW);
   digitalWrite(loadPin, LOW);
 
   report_encoder();
   
   SmState = STATE_DRIVING;
   
-  
-  
 }
 
 void Sm_State_Start(void){
-  digitalWrite(loadPin,LOW);//LOW is off
-  digitalWrite(drivePin, HIGH); //HIGH is off
-  delay(20);
-  delay(100);
+  // load OFF
+  digitalWrite(loadLed,HIGH); //test LED
+  digitalWrite(loadPin,LOW);
+
+  //drive OFF
+  digitalWrite(driveLed, HIGH); //test LED
+  digitalWrite(drivePin, HIGH); 
+  
+  delay(120);
   SmState = STATE_DRIVING;
 }
 
 void Sm_State_Stopped(void){
+  // load stays as it was
+
+  // drive OFF
+  digitalWrite(driveLed, LOW); 
   digitalWrite(drivePin,HIGH);
+  
   report_encoder();
   SmState = STATE_STOPPED;
 }
@@ -217,11 +249,24 @@ void setup() {
   digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor
   digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
   digitalWrite(clearButton, HIGH);
-  pinMode(loadPin, OUTPUT);
-  pinMode(drivePin, OUTPUT);
-  digitalWrite(loadPin, LOW);
-  digitalWrite(drivePin, LOW);
   
+
+  
+
+ 
+  // load is OUTPUT, start OFF
+  pinMode(loadLed, OUTPUT);
+  digitalWrite(loadLed, LOW);  
+
+  pinMode(loadPin, OUTPUT);
+  digitalWrite(loadPin, LOW); //NPN
+  
+  // drive is OUTPUT, start OFF
+  pinMode(driveLed, OUTPUT);
+  digitalWrite(driveLed, LOW);
+     
+  pinMode(drivePin, OUTPUT);  
+  digitalWrite(drivePin, HIGH); // PNP
 
   // encoder pin on interrupt 0 (pin 2)
   attachInterrupt(0, doEncoderA, CHANGE);
@@ -371,12 +416,14 @@ StateType readSerial(StateType SmState){
     }
     else if (((SmState == STATE_STOPPED) || (SmState == STATE_DRIVING)) && (incomingByte == 76)) //L
     {
+      digitalWrite(loadLed,HIGH); 
       digitalWrite(loadPin,HIGH); //Load goes on 
       SmState = STATE_STOPPED;
       Serial.println("{\"cmd\":\"L\"}");
     }
     else if (((SmState == STATE_STOPPED) || (SmState == STATE_DRIVING)) && (incomingByte == 108)) //l
     {
+        digitalWrite(loadLed,LOW); 
       digitalWrite(loadPin,LOW); //Load goes off
       SmState = STATE_STOPPED;
       Serial.println("{\"cmd\":\"l\"}");
@@ -405,25 +452,14 @@ void Sm_Run(void)
 }
 
 
-void old_loop(){
-  
-  if (true)  {
-    //Serial.print("Index:");
-    Serial.print(encoderPos, DEC);
-    Serial.println();
-    lastReportedPos = encoderPos;
-  }
-  if (digitalRead(clearButton) == LOW)  {
-    encoderPos = 0;
-  }
-}
-
 // Interrupt on A changing state
 void doEncoderA() {
   // Test transition
   A_set = digitalRead(encoderPinA) == HIGH;
   // and adjust counter + if A leads B
+  encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
+  driver();
 }
 
 // Interrupt on B changing state
@@ -431,5 +467,39 @@ void doEncoderB() {
   // Test transition
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if B follows A
+  encoderPosLast = encoderPos;
   encoderPos += (A_set == B_set) ? +1 : -1;
+  driver();
 }
+
+void driver(){
+
+  if (encoderPos > 0){
+    onPosSide = true;  
+  } else {
+    onPosSide = false;  
+  }
+
+  if ((encoderPos - encoderPosLast) > 0) {
+    goingPosDir = true;  
+  } else{
+    goingPosDir = false;  
+  }
+ 
+  if ((SmState == STATE_DRIVING) && 
+      (goingPosDir == onPosSide) && 
+      (abs(encoderPos) > 0) && 
+      (abs(encoderPos) < driveThresh)) {
+
+        digitalWrite(driveLed, HIGH);
+        digitalWrite(drivePin, LOW);
+
+      } else {
+        digitalWrite(driveLed, LOW);
+        digitalWrite(drivePin, HIGH);   
+    }
+}
+//volatile int encoderPos = 0;
+//volatile int encoderPosLast = 0;
+//volatile bool goingPosDir = false;
+//volatile bool onPosSide = false;
