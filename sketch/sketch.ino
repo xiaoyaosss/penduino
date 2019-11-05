@@ -20,7 +20,6 @@ enum PinAssignments {
 encoderPinA = 2,
 encoderPinB = 3,
 drivePin = 6,
-bumpPin = 5,
 loadPin = 4,
 clearButton = 8
 };
@@ -89,7 +88,6 @@ StateType SmState = STATE_START_CALIBRATION;
 
 void Sm_State_Start_Calibration(void)
 {
-  digitalWrite(bumpPin, HIGH); //HIGH for No Bump
   digitalWrite(loadPin, HIGH);  //LOW for No Load
   digitalWrite(drivePin, HIGH); //HIGH for No Drive
   SmState = STATE_AWAITING_STOP;
@@ -185,7 +183,6 @@ void report_encoder(void)
 
 void Sm_State_Driving(void)
 {
-  digitalWrite(bumpPin, HIGH);
   digitalWrite(drivePin, LOW);
   digitalWrite(loadPin, LOW);
 
@@ -200,17 +197,13 @@ void Sm_State_Driving(void)
 void Sm_State_Start(void){
   digitalWrite(loadPin,LOW);//LOW is off
   digitalWrite(drivePin, HIGH); //HIGH is off
-  digitalWrite(bumpPin,LOW);
   delay(20);
-  digitalWrite(bumpPin,HIGH);
   delay(100);
   SmState = STATE_DRIVING;
 }
 
 void Sm_State_Stopped(void){
-  digitalWrite(bumpPin,HIGH);
   digitalWrite(drivePin,HIGH);
-  //digitalWrite(loadPin,LOW);
   report_encoder();
   SmState = STATE_STOPPED;
 }
@@ -224,10 +217,8 @@ void setup() {
   digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor
   digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
   digitalWrite(clearButton, HIGH);
-  pinMode(bumpPin, OUTPUT);
   pinMode(loadPin, OUTPUT);
   pinMode(drivePin, OUTPUT);
-  digitalWrite(bumpPin, HIGH);
   digitalWrite(loadPin, LOW);
   digitalWrite(drivePin, LOW);
   
