@@ -20,17 +20,19 @@ enum PinAssignments {
 clearButton = 8,
 encoderPinA = 2,
 encoderPinB = 3,
-driveLed = 12,
-drivePin = 5,
-loadLed = 11,
-loadPin = 4
+driveLed = 10,
+drivePin = 6,
+loadLed = 12,
+loadPin = 4,
+swingingLed = 8
 };
 
 volatile int encoderPos = 0;
 volatile int encoderPosLast = 0;
 volatile bool goingPosDir = false;
 volatile bool onPosSide = false;
-volatile int driveThresh = 30;
+volatile int driveThresh = 20;
+volatile int startDelay = 10;
 
 int lastReportedPos = 1;
 
@@ -121,6 +123,9 @@ void Sm_State_Awaiting_Stop(void)
   //turn on the load
   digitalWrite(loadLed,HIGH); 
   digitalWrite(loadPin,HIGH); 
+
+  // no drive will be applied
+  digitalWrite(swingingLed, LOW);  
     
   int initial_position = encoderPos;
   bool swinging = true;
@@ -201,11 +206,10 @@ void report_encoder(void)
 void Sm_State_Driving(void){
 
   // let the encoder interrupts drive the drive pin
-  
-  //drive ON
-  //digitalWrite(driveLed, HIGH);
-  //digitalWrite(drivePin, LOW);
-  
+
+  // let user know pendulum could/should be moving
+  digitalWrite(swingingLed, HIGH);  
+   
   //load OFF
   digitalWrite(loadLed, LOW);
   digitalWrite(loadPin, LOW);
@@ -218,20 +222,26 @@ void Sm_State_Driving(void){
 
 void Sm_State_Start(void){
   // load OFF
-  digitalWrite(loadLed,HIGH); //test LED
+  digitalWrite(loadLed,LOW); //
   digitalWrite(loadPin,LOW);
 
-  //drive OFF
-  digitalWrite(driveLed, HIGH); //test LED
-  digitalWrite(drivePin, HIGH); 
+  //drive ON
+  digitalWrite(driveLed, HIGH);
+  digitalWrite(drivePin, LOW); 
+
+  // alert user that swinging is possible
+  digitalWrite(swingingLed, HIGH);  
   
-  delay(120);
+  delay(startDelay);
   SmState = STATE_DRIVING;
 }
 
 void Sm_State_Stopped(void){
   // load stays as it was
-
+  
+  // no drive will be applied
+  digitalWrite(swingingLed, LOW);  
+  
   // drive OFF
   digitalWrite(driveLed, LOW); 
   digitalWrite(drivePin,HIGH);
@@ -249,10 +259,9 @@ void setup() {
   digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor
   digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
   digitalWrite(clearButton, HIGH);
-  
 
-  
-
+  pinMode(swingingLed, OUTPUT);
+  digitalWrite(swingingLed, LOW);  
  
   // load is OUTPUT, start OFF
   pinMode(loadLed, OUTPUT);
@@ -288,10 +297,11 @@ void loop(){
 /**
  *  Example commmands
  *  {"cmd":"interval","param":200}
+ *  {"cmd":"drive","param":30}
  *  {"cmd":"stop","param":"loaded"}
  *  {"cmd":"stop","param":"unloaded"}
  *  {"cmd":"stop"}
- *  {"cmd":"start"}
+ *  {"cmd":"start","param":50}
  *  {"cmd":"calibrate"}
  */
 
@@ -308,6 +318,7 @@ StateType readSerialJSON(StateType SmState){
     char report_interval[] = "interval";
     char loaded[] = "loaded";
     char unloaded[] = "unloaded";
+    char drive[] = "drive";
     
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
                 
@@ -328,6 +339,21 @@ StateType readSerialJSON(StateType SmState){
         Serial.println("{\"error\":\"interval must be between 0 - 1000\"}");
       }
     }
+
+    if (strcmp(cmd,drive)==0)
+    {
+      int newDriveThresh = doc["param"];
+      if ((newDriveThresh >= 0) && (newDriveThresh <= 100))
+      {
+        driveThresh = newDriveThresh;
+        Serial.println("{\"result\":\"ok\"}");
+      }
+      else
+      {
+        Serial.println("{\"error\":\"drive must be between 0 - 100 (inclusive)\"}");
+      }
+    }
+    
     
     if (strcmp(cmd,stop)==0)
     {
@@ -337,10 +363,15 @@ StateType readSerialJSON(StateType SmState){
         const char * param = doc["param"];
       
         if (strcmp(param, loaded)==0){
-          digitalWrite(loadPin,HIGH); //load is on
+          //load is on
+          digitalWrite(loadLed,HIGH); 
+          digitalWrite(loadPin,HIGH); 
+
         }
         else if (strcmp(param, unloaded)==0){
-          digitalWrite(loadPin,LOW); //load is off
+          //load is off
+          digitalWrite(loadLed,LOW); 
+          digitalWrite(loadPin,LOW); 
         }
         
         Serial.print(",\"loaded\":");
@@ -374,8 +405,22 @@ StateType readSerialJSON(StateType SmState){
     
       if ((SmState == STATE_DRIVING) || (SmState == STATE_STOPPED))
       { 
-        Serial.println("{\"result\":\"starting\"}");
-        SmState = STATE_START;
+
+        int newStartDelay = doc["param"];
+        if ((newStartDelay >= 0) && (newStartDelay <= 500))
+        {
+          startDelay = newStartDelay;
+
+          Serial.println("{\"result\":\"starting\"}");
+          SmState = STATE_START;
+          
+        }
+        else
+        {
+          Serial.println("{\"error\":\"start must be between 0 - 500 [ms](exclusive)\"}");
+        }
+        
+
       }
       else{
       
