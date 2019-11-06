@@ -24,7 +24,7 @@ driveLed = 10,
 drivePin = 6,
 loadLed = 12,
 loadPin = 4,
-swingingLed = 8
+brakingLed = 8
 };
 
 volatile int encoderPos = 0;
@@ -33,6 +33,13 @@ volatile bool goingPosDir = false;
 volatile bool onPosSide = false;
 volatile int driveThresh = 20;
 volatile int startDelay = 10;
+volatile bool brakeStop = false;
+volatile int brakeThresh = 100;
+volatile bool doDriving = false;
+volatile bool doStopping = false;
+volatile int modifiedBrakeThresh = 100;
+volatile bool goingPosDirLast  = false;
+volatile int peakSwing = 0;
 
 int lastReportedPos = 1;
 
@@ -97,6 +104,10 @@ StateType SmState = STATE_START_CALIBRATION;
 
 void Sm_State_Start_Calibration(void)
 {
+  
+  // can't use the brake because the encoder values could be wrong
+  // so use the load instead.
+  
   //drive OFF
   digitalWrite(drivePin, HIGH); // PNP - HIGH for OFF
   digitalWrite(driveLed, LOW);  // opposite sense to drivePin
@@ -104,6 +115,9 @@ void Sm_State_Start_Calibration(void)
   // load ON
   digitalWrite(loadPin, HIGH);  // NPN - HIGH for ON
   digitalWrite(loadLed, HIGH);  // same sense as loadPin
+
+  doDriving = false;  // ensure drive not applied
+  doStopping = false; //ensure brake not used
   
   SmState = STATE_AWAITING_STOP; 
   
@@ -120,13 +134,7 @@ void timeUp(void){
 
 void Sm_State_Awaiting_Stop(void)
 {
-  //turn on the load
-  digitalWrite(loadLed,HIGH); 
-  digitalWrite(loadPin,HIGH); 
-
-  // no drive will be applied
-  digitalWrite(swingingLed, LOW);  
-    
+ 
   int initial_position = encoderPos;
   bool swinging = true;
   int lastPos = 0;
@@ -157,9 +165,6 @@ void Sm_State_Awaiting_Stop(void)
     }
   }
 
-  //load OFF
-  digitalWrite(loadPin, LOW); 
-  digitalWrite(loadLed, LOW); 
   SmState = STATE_ZERO_ENCODER;
 
 }
@@ -204,12 +209,10 @@ void report_encoder(void)
 }
 
 void Sm_State_Driving(void){
-
+  doDriving = true;
+  doStopping = false;
   // let the encoder interrupts drive the drive pin
 
-  // let user know pendulum could/should be moving
-  digitalWrite(swingingLed, HIGH);  
-   
   //load OFF
   digitalWrite(loadLed, LOW);
   digitalWrite(loadPin, LOW);
@@ -221,6 +224,10 @@ void Sm_State_Driving(void){
 }
 
 void Sm_State_Start(void){
+  
+  doDriving = true;
+  doStopping = false;
+  
   // load OFF
   digitalWrite(loadLed,LOW); //
   digitalWrite(loadPin,LOW);
@@ -229,18 +236,14 @@ void Sm_State_Start(void){
   digitalWrite(driveLed, HIGH);
   digitalWrite(drivePin, LOW); 
 
-  // alert user that swinging is possible
-  digitalWrite(swingingLed, HIGH);  
-  
   delay(startDelay);
   SmState = STATE_DRIVING;
 }
 
 void Sm_State_Stopped(void){
+  doDriving = false;
+  doStopping = true;
   // load stays as it was
-  
-  // no drive will be applied
-  digitalWrite(swingingLed, LOW);  
   
   // drive OFF
   digitalWrite(driveLed, LOW); 
@@ -260,8 +263,8 @@ void setup() {
   digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
   digitalWrite(clearButton, HIGH);
 
-  pinMode(swingingLed, OUTPUT);
-  digitalWrite(swingingLed, LOW);  
+  pinMode(brakingLed, OUTPUT);
+  digitalWrite(brakingLed, LOW);  
  
   // load is OUTPUT, start OFF
   pinMode(loadLed, OUTPUT);
@@ -300,6 +303,8 @@ void loop(){
  *  {"cmd":"drive","param":30}
  *  {"cmd":"stop","param":"loaded"}
  *  {"cmd":"stop","param":"unloaded"}
+ *  {"cmd":"stop","param":"brake"}
+ *  {"cmd":"brake","param":30}
  *  {"cmd":"stop"}
  *  {"cmd":"start","param":50}
  *  {"cmd":"calibrate"}
@@ -318,6 +323,7 @@ StateType readSerialJSON(StateType SmState){
     char report_interval[] = "interval";
     char loaded[] = "loaded";
     char unloaded[] = "unloaded";
+    char brake[] = "brake";
     char drive[] = "drive";
     
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
@@ -353,7 +359,21 @@ StateType readSerialJSON(StateType SmState){
         Serial.println("{\"error\":\"drive must be between 0 - 100 (inclusive)\"}");
       }
     }
+
     
+    if (strcmp(cmd,brake)==0)
+    {
+      int newBrakeThresh = doc["param"];
+      if ((newBrakeThresh >= 0) && (newBrakeThresh <= 100))
+      {
+        brakeThresh = newBrakeThresh;
+        Serial.println("{\"result\":\"ok\"}");
+      }
+      else
+      {
+        Serial.println("{\"error\":\"break must be between 0 - 100 (inclusive)\"}");
+      }
+    }
     
     if (strcmp(cmd,stop)==0)
     {
@@ -366,16 +386,25 @@ StateType readSerialJSON(StateType SmState){
           //load is on
           digitalWrite(loadLed,HIGH); 
           digitalWrite(loadPin,HIGH); 
+          brakeStop = false;
 
         }
         else if (strcmp(param, unloaded)==0){
           //load is off
           digitalWrite(loadLed,LOW); 
           digitalWrite(loadPin,LOW); 
+          brakeStop = false;
         }
-        
+        else if (strcmp(param, brake)==0){
+          //load is off - else short circuit!
+          digitalWrite(loadLed,LOW); 
+          digitalWrite(loadPin,LOW); 
+          brakeStop = true;
+        }        
         Serial.print(",\"loaded\":");
         Serial.print(digitalRead(loadPin));
+        Serial.print(",\"brake\":");
+        Serial.print(brakeStop);
         Serial.print("}");
         SmState = STATE_STOPPED;
       }
@@ -518,33 +547,62 @@ void doEncoderB() {
 }
 
 void driver(){
-
+  // default to LEDs off, no drive to coil
+  bool applyCoilPower = false;
+  bool showDriveLed = false;
+  bool showBrakeLed = false;
+  
   if (encoderPos > 0){
     onPosSide = true;  
   } else {
     onPosSide = false;  
   }
-
+  
+  goingPosDirLast = goingPosDir;
   if ((encoderPos - encoderPosLast) > 0) {
     goingPosDir = true;  
   } else{
     goingPosDir = false;  
   }
- 
-  if ((SmState == STATE_DRIVING) && 
-      (goingPosDir == onPosSide) && 
-      (abs(encoderPos) > 0) && 
-      (abs(encoderPos) < driveThresh)) {
 
-        digitalWrite(driveLed, HIGH);
-        digitalWrite(drivePin, LOW);
+  // we've changed directions
+  if (goingPosDir != goingPosDirLast) {
+    peakSwing = abs(encoderPos);
+  }
+  
+  if (doDriving && 
+     (goingPosDir == onPosSide) && 
+     (abs(encoderPos) > 0) && 
+     (abs(encoderPos) < driveThresh)) {
+  
+          showDriveLed = true; 
+          applyCoilPower = true;
 
-      } else {
-        digitalWrite(driveLed, LOW);
-        digitalWrite(drivePin, HIGH);   
-    }
+  }  else if (doStopping && (brakeStop == true)){
+
+      // use full braking thresh if swing is large
+      if (peakSwing > modifiedBrakeThresh) {
+          modifiedBrakeThresh = brakeThresh; 
+      } 
+      
+      //reduce if swing is within thresh, to avoid hangup
+      if (peakSwing < modifiedBrakeThresh){
+          modifiedBrakeThresh = peakSwing - 3; //is an abs value
+          if (peakSwing < 0 ){
+             peakSwing = 0;  
+          }
+      }
+  
+      if ((goingPosDir != onPosSide) && (abs(encoderPos) < modifiedBrakeThresh)) {
+          // approaching centre, within the modified brake threshold, so apply brake    
+          showBrakeLed = true; 
+          applyCoilPower = true;
+      } 
+  } 
+  
+  //update outputs with what we have decided to do
+  digitalWrite(brakingLed, showBrakeLed);
+  digitalWrite(driveLed, showDriveLed);
+  digitalWrite(drivePin, !applyCoilPower); //active low driver     
+    
 }
-//volatile int encoderPos = 0;
-//volatile int encoderPosLast = 0;
-//volatile bool goingPosDir = false;
-//volatile bool onPosSide = false;
