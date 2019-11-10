@@ -15,7 +15,7 @@ Assemble the circuit using veroboard (there is no PCB design yet, but the Kicad 
 
 ![alt text][cct]
 
-There are currently no plans available for the hardware, but the winding and magnet details are similar to [Tony Gasparovic's magnetic pendulum](http://nutsvolts.texterity.com/nutsvolts/200909/?folio=36&pg=36#pg36). The encoder is a generic OEM quadrature rotary encoder.
+There are currently no plans available for the hardware, but the winding and magnet details are similar to [Tony Gasparovic's magnetic pendulum](http://nutsvolts.texterity.com/nutsvolts/200909/?folio=36&pg=36#pg36). The encoder is a generic OEM quadrature rotary encoder. Check the bearings and seals run free because the more expensive encoders tend to have good seals that are too stiff for free running.
 
 
 ### Step 2: Obtain the code 
@@ -31,7 +31,7 @@ Up all the files in the ```./sketch``` directory to your online arduino editor.
 
 Compile the code and download to your arduino.
 
-Step 4: , connect up the circuit and pendulum 
+Step 4: Connect up the circuit and pendulum 
 
 ### Step 4: Run it
 
@@ -43,7 +43,7 @@ Then power it up to set it running.
 
 You'll observe the following on startup:
 
-The load LED comes on, until the pendulum has completely stopped moving. The rotary encoder is zero'd at this point, then swinging starts (so you know calibration is done).
+The load LED comes on, until the pendulum has completely stopped moving. The rotary encoder is zeroed at this point, then swinging starts (so you know calibration is done).
 
 ### Step 5: Control it
 
@@ -79,18 +79,18 @@ Energise the coil for <param> milliseconds, to get the coil moving from a cold s
 
 ```{"cmd":"start","param":50}```
 
-After the initial bump, the drive circuit will be turned on in accordance with the setting of the drive threshold, which can be set with
+After the initial bump, the drive circuit will be turned on in accordance with the setting of the drive threshold, which can be set with this command:
 
 ```{"cmd":"drive","param":30}```
 
 
 ### Stop with active braking
 
-This stops the coil by producing a repelling force when the coil is approaching the centre line
+This stops the pendulum by repelling it as it approaches the coil
 
 {"cmd":"stop","param":"brake"}
 
-You can tune the strength of the braking by setting the threshold at which the braking starts. The permissable values are between 0 - 100, with 100 producing the strongest braking force, and 0 producing no braking force at all.
+You can tune the strength of the braking by setting the threshold at which the braking starts. The permissible values are between 0 - 100, with 100 producing the strongest braking force, and 0 producing no braking force at all.
 
 {"cmd":"brake","param":30}
 
@@ -172,7 +172,7 @@ How closely does the coil follow the inverse third power law for magnetic field 
  
 ### Navigational uses
 
-Accurate time keeping was required for navigation at sea using sightings of the the stars and sun. How well does the pendulum maintain the period, and phase, of its oscillations? Check the timing of the pendulum swings over a large time like an hour, or even 24 hours. Could you take your pendulum to see in a boat for use in navigation?
+Accurate time keeping was required for navigation at sea using sightings of the stars and sun. How well does the pendulum maintain the period, and phase, of its oscillations? Check the timing of the pendulum swings over a large time like an hour, or even 24 hours. Could you take your pendulum to sea in a boat for use in navigation?
 
 ### Decay curves
 
