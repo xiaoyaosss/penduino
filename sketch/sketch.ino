@@ -111,10 +111,12 @@ void Sm_State_Start_Calibration(void)
   //drive OFF
   digitalWrite(drivePin, HIGH); // PNP - HIGH for OFF
   digitalWrite(driveLed, LOW);  // opposite sense to drivePin
+  coilMessage(LOW);
   
   // load ON
   digitalWrite(loadPin, HIGH);  // NPN - HIGH for ON
   digitalWrite(loadLed, HIGH);  // same sense as loadPin
+  loadMessage(HIGH);
 
   doDriving = false;  // ensure drive not applied
   doStopping = false; //ensure brake not used
@@ -158,6 +160,8 @@ void Sm_State_Awaiting_Stop(void)
         Serial.print(encoderPos);
         Serial.print(",\"sameCount\":");
         Serial.print(sameCount);
+        Serial.print(",\"time\":");
+        Serial.print(millis());      
         Serial.println("}");
       }
     if (sameCount <= 0){
@@ -200,6 +204,8 @@ void report_encoder(void)
       else{
         Serial.print("{\"enc\":");
         Serial.print(encoderPos);
+        Serial.print(",\"time\":");
+        Serial.print(millis());  
         Serial.println("}");
       }
       waiting = false;
@@ -216,7 +222,8 @@ void Sm_State_Driving(void){
   //load OFF
   digitalWrite(loadLed, LOW);
   digitalWrite(loadPin, LOW);
-
+  loadMessage(LOW);
+  
   report_encoder();
   
   SmState = STATE_DRIVING;
@@ -231,10 +238,12 @@ void Sm_State_Start(void){
   // load OFF
   digitalWrite(loadLed,LOW); //
   digitalWrite(loadPin,LOW);
-
+  loadMessage(LOW);
+  
   //drive ON
   digitalWrite(driveLed, HIGH);
   digitalWrite(drivePin, LOW); 
+  coilMessage(HIGH);
 
   delay(startDelay);
   SmState = STATE_DRIVING;
@@ -248,6 +257,7 @@ void Sm_State_Stopped(void){
   // drive OFF
   digitalWrite(driveLed, LOW); 
   digitalWrite(drivePin,HIGH);
+  coilMessage(LOW);
   
   report_encoder();
   SmState = STATE_STOPPED;
@@ -269,13 +279,15 @@ void setup() {
   // load is OUTPUT, start OFF
   pinMode(loadLed, OUTPUT);
   digitalWrite(loadLed, LOW);  
-
+  loadMessage(LOW);
+  
   pinMode(loadPin, OUTPUT);
   digitalWrite(loadPin, LOW); //NPN
   
   // drive is OUTPUT, start OFF
   pinMode(driveLed, OUTPUT);
   digitalWrite(driveLed, LOW);
+  coilMessage(LOW);
      
   pinMode(drivePin, OUTPUT);  
   digitalWrite(drivePin, HIGH); // PNP
@@ -386,6 +398,7 @@ StateType readSerialJSON(StateType SmState){
           //load is on
           digitalWrite(loadLed,HIGH); 
           digitalWrite(loadPin,HIGH); 
+          loadMessage(HIGH);
           brakeStop = false;
 
         }
@@ -393,12 +406,14 @@ StateType readSerialJSON(StateType SmState){
           //load is off
           digitalWrite(loadLed,LOW); 
           digitalWrite(loadPin,LOW); 
+          loadMessage(LOW);
           brakeStop = false;
         }
         else if (strcmp(param, brake)==0){
           //load is off - else short circuit!
           digitalWrite(loadLed,LOW); 
           digitalWrite(loadPin,LOW); 
+          loadMessage(LOW);
           brakeStop = true;
         }        
         Serial.print(",\"loaded\":");
@@ -533,7 +548,9 @@ void doEncoderA() {
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
+  encoderWrap();
   driver();
+  
 }
 
 // Interrupt on B changing state
@@ -543,6 +560,7 @@ void doEncoderB() {
   // and adjust counter + if B follows A
   encoderPosLast = encoderPos;
   encoderPos += (A_set == B_set) ? +1 : -1;
+  encoderWrap();
   driver();
 }
 
@@ -603,6 +621,34 @@ void driver(){
   //update outputs with what we have decided to do
   digitalWrite(brakingLed, showBrakeLed);
   digitalWrite(driveLed, showDriveLed);
-  digitalWrite(drivePin, !applyCoilPower); //active low driver     
+  digitalWrite(drivePin, !applyCoilPower); //active low driver
+  coilMessage(applyCoilPower);
+  loadMessage(showDriveLed);   
     
+}
+
+void coilMessage(bool energised){
+        return;
+        Serial.print("{\"coil\":");
+        Serial.print(energised);
+        Serial.print(",\"time\":");
+        Serial.print(millis());  
+        Serial.println("}");
+}
+
+void loadMessage(bool on){
+        return;
+        Serial.print("{\"load\":");
+        Serial.print(on);
+        Serial.print(",\"time\":");
+        Serial.print(millis());  
+        Serial.println("}");
+}
+
+void encoderWrap(void){
+  if (encoderPos > 1200) {
+    encoderPos -= 2400;
+    } else if (encoderPos < -1200) {
+      encoderPos += 2400;
+      }
 }
