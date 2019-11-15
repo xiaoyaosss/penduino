@@ -2,7 +2,7 @@
 
 # penduino
 
-Microntroller-based pendulum experiment with magnetic drive and rotary encoder
+Microcontroller-based pendulum experiment with magnetic drive and rotary encoder
 
 ![alt text][swinging]
 
